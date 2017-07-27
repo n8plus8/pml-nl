@@ -1,0 +1,121 @@
+---
+title: "(HAR) Weight Lifting Exercises Dataset"
+author: "N. Leung"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, comment = NA)
+```
+
+```{r}
+load(file = "pml-nl.RData"); library(caret)
+```
+
+## **Introduction**
+Devices such as Jawbone Up, Nike FuelBand and Fitbit now make it possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify *how well they do it*.
+
+
+## **Summary**
+6 participants were asked to perform barbell lifts correctly and incorrectly in 5 different ways. Using data from accelerometers on the belt, forearm, arm and barbell, we will predict the manner in which they did the exercise. This is the "classe" variable data set, ordinally ranked A to E.  
+
+More information is available from the website here: <http://groupware.les.inf.puc-rio.br/har> (see the section on the Weight Lifting Exercise Dataset).
+
+
+10 models were built using the **'caret'** package. 10-fold cross validation, repeated 3 times, was performed for all models. In addition, a hyperparameter grid search was used to tune xgbTree. The **doSNOW** package was used for processing in parallel (optional).
+
+
+1. Classification and Regression Tree (CART)
+2. Flexible Discriminant Analysis (FDA)
+3. Learning Vector Quantization (LVQ)
+4. Linear Discriminant Analysis (LDA)
+5. Quadratic Discriminant Analysis (QDA)
+6. Random Forests (RF)
+7. Regularized Discriminant Analysis (RDA)
+8. eXtreme Gradient Boosting (XGB)	using xgbTree
+9. Support Vector Machine (SVM) using Radial kernel
+10. Stochastic Gradient Boosting (GBM)
+
+The GBM model, with an accuracy of 0.9934, was chosen to predict from the test set. However, other models achieved similar accuracy and can be used for prediction.
+
+## **Data Tidying**
+The original training set contained 160 variables, many of which contained NAs and missing values. The final training set contains 54 variables. Variables removed:
+
+* Indexes, names, and timestamps ("V1", * "user_name", "raw_timestamp_part_1", " raw_timestamp_part_2", "cvtd_timestamp")
+* Majority (at least 95%) NAs and missing values
+* Near zero variance variables
+
+Other transformations we can perform:  
+Remove correlated predictors, say if we wanted to build a partial least squares model.  
+Normalize or log-transform the variables for PCA. We can also use *preProcess* in the train() function.  
+
+Let's continue as is.
+
+```{r, echo = TRUE}
+# Class balances
+table(training$classe)
+```
+
+
+## **Modeling**
+
+**Setting seed, training options and hyperparameter grid for xgbTree**  
+`set.seed(88888888)`  
+
+`control <- trainControl(method = "repeatedcv", number = 10, repeats = 3)`  
+
+`tune.grid <- expand.grid(eta = c(0.05, 0.075, 0.1),`  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`nrounds = c(50, 75, 100),`  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`max_depth = 6:8,`  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`min_child_weight = c(2.0, 2.25, 2.5),`  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`colsample_bytree = c(0.3, 0.4, 0.5),`  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`gamma = 0,`  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`subsample = 1)`  
+                         
+*Optional, **doSNOW** for parallel processing*  
+`library(doSNOW); cl <- makeCluster(3, type = "SOCK")`&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Set # of clusters carefully!
+`registerDoSNOW(cl)`&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Register cluster
+`stopCluster(cl)`&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Remember to stop the cluster when the models are completed
+
+**Building the models**  
+Code for Stochastic Gradient Boosting (GBM) model. Other models use the same naming and coding convention.
+`modelGBM <- train(classe ~ ., data = f_train, method = "gbm", trControl = control)`  
+
+
+## **Collation And Visualization Of Results**
+```{r, echo = TRUE}
+results <- resamples(list(CART = modelCART,
+                           FDA = modelFDA,
+                           LVQ = modelLVQ,
+                           LDA = modelLDA,
+                           QDA = modelQDA,
+                            RF = modelRF,
+                           RDA = modelRDA,
+                           XGB = modelXGB,
+                           SVM = modelSVM,
+                           GBM = modelGBM))
+bwplot(results)
+```
+
+Boosting and random forests perform very well.  
+You can also extract elements from a confusion matrix of the model of interest
+```{r, echo = TRUE}
+confusionMatrix(f_train$classe, predict(modelGBM))$overall[1]
+```
+
+
+## **Predictions**
+```{r}
+data.frame(XGB = predict(modelXGB, testing),
+                          RF = predict(modelRF, testing),
+                          GBM = predict(modelGBM, testing),
+                          SVM = predict(modelSVM, testing),
+                          FDA = predict(modelFDA, testing),
+                          RDA = predict(modelRDA, testing),
+                          QDA = predict(modelQDA, testing),
+                          LDA = predict(modelLDA, testing),
+                          LVQ = predict(modelLVQ, testing),
+                          CART = predict(modelCART, testing))
+```
+
+Notice that the top 5 models, based on accuracy, return the same predictions.
