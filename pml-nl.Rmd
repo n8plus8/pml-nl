@@ -38,12 +38,52 @@ More information is available from the website here: <http://groupware.les.inf.p
 
 The GBM model, with an accuracy of 0.9934, was chosen to predict from the test set. However, other models achieved similar accuracy and can be used for prediction.
 
+
+#### *Note: In and Out of Sample Errors*  
+The data set was not split into training and testing sets. In a real environment it would be prudent to do so. The motivation for this exercise was to experiment with the **caret** package, compare an exagerrated amount of models and use a majority vote if performance varied highly. All predictions passed the final quiz.  
+
+Data splitting is performed using the **createDataPartition()** function in **caret**  
+`set.seed(8)`   
+`inTrain <- createDataPartition(trainData$classe, p = 3/4, list = FALSE)`  
+`train <- trainData[inTrain, ]`  
+`valid <- trainData[-inTrain, ]`  
+
+
 ## **Data Tidying**
 The original training set contained 160 variables, many of which contained NAs and missing values. The final training set contains 54 variables. Variables removed:
 
 * Indexes, names, and timestamps ("V1", * "user_name", "raw_timestamp_part_1", " raw_timestamp_part_2", "cvtd_timestamp")
 * Majority (at least 95%) NAs and missing values
 * Near zero variance variables
+
+
+Code used for cleaning  
+`View(training) # a lot of blanks and NAs`
+
+`# "classe" is a factor`  
+`training$classe <- as.factor(training$classe)`
+
+`# remove the index, names, and timestamps`  
+`f_train <- data.frame(training[ , -(1:5)]) # f, for filtered`
+
+`# Dealing with NAs`  
+`# Total NAs per column set to 95% threshold to keep columns where we may be able`  
+`# to impute missing values later`  
+`f_train <- f_train[ , colSums(!is.na(f_train)) > .95*nrow(f_train)]`  
+`sum(is.na(f_train)) # looks like all columns had over 95% NAs`
+
+`# Removing columns with more than 95% blanks`  
+`empties <- apply(f_train, 2, function(x) sum(x == "")) > .95*nrow(f_train)`  
+`f_train <- f_train[ , !empties]`  
+`sum(f_train == "") # looks like all columns had over 95% blanks`  
+
+`# We could have probably eliminated problematic variables with nearZeroVar()`  
+`# Let's see what it tells us now`  
+`nzv <- nearZeroVar(f_train[,-55])`  
+`table(f_train[,1]) # drop it`  
+`f_train <- f_train[ , -nzv]`
+
+
 
 Other transformations we can perform:  
 Remove correlated predictors, say if we wanted to build a partial least squares model.  
@@ -73,8 +113,8 @@ table(training$classe)
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`subsample = 1)`  
                          
 *Optional, **doSNOW** for parallel processing*  
-`library(doSNOW); cl <- makeCluster(3, type = "SOCK")`&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Set # of clusters carefully!
-`registerDoSNOW(cl)`&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Register cluster
+`library(doSNOW); cl <- makeCluster(3, type = "SOCK")`&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Set # of clusters carefully!  
+`registerDoSNOW(cl)`&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Register cluster  
 `stopCluster(cl)`&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Remember to stop the cluster when the models are completed
 
 **Building the models**  
@@ -98,7 +138,7 @@ bwplot(results)
 ```
 
 Boosting and random forests perform very well.  
-You can also extract elements from a confusion matrix of the model of interest
+You can also extract elements from a confusion matrix for the model of interest
 ```{r, echo = TRUE}
 confusionMatrix(f_train$classe, predict(modelGBM))$overall[1]
 ```
@@ -118,4 +158,4 @@ data.frame(XGB = predict(modelXGB, testing),
                           CART = predict(modelCART, testing))
 ```
 
-Notice that the top 5 models, based on accuracy, return the same predictions.
+Examine the full code at <https://github.com/n8plus8/pml-nl/blob/master/pml-nl.R>
